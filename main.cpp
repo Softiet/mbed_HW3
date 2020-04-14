@@ -1,3 +1,5 @@
+#include <vector>
+
 #include "mbed.h"
 #include "mbed_events.h"
 
@@ -45,6 +47,11 @@ uint8_t who_am_i, data[2], res[6];
 int16_t acc16;
 float t[3];
 
+std::vector <float> data_x;
+std::vector <float> data_y;
+std::vector <float> data_z;
+std::vector <int> data_tilt;
+
 void FXOS8700CQ_readRegs(int addr, uint8_t * data, int len);
 
 void FXOS8700CQ_writeRegs(uint8_t * data, int len);
@@ -61,16 +68,25 @@ void deactivate(){
     led1 = 1;
     led2 = 1;
     led3 = 1;
+    //transmission
+    for(int i=0;i<99;i++){
+        //pc.printf("%d\nX:%f\nY:%f\nZ:%f\n",i,data_x[i],data_y[i],data_z[i]);
+        pc.printf("%f\n%f\n%f\n%d\n",data_x[i],data_y[i],data_z[i],data_tilt[i]);
+    }
+    data_x.clear();
+    data_y.clear();
+    data_z.clear();
+    data_tilt.clear();
 }
 
 void activate(){
     led_ticker.attach(queue.event(&led_blink),1.0f);
-    log_ticker.attach(queue.event(&logger),0.5f);
+    log_ticker.attach(queue.event(&logger),0.1f);
     led1 = 0;
     queue.call_in(10000, deactivate);
 }
 
-
+int evaluate(float x,float y,float z);
 
 int main() {
     led1 = 1;
@@ -91,14 +107,14 @@ int main() {
 
    // Get the slave address
    FXOS8700CQ_readRegs(FXOS8700Q_WHOAMI, &who_am_i, 1);
-   pc.printf("Here is %x\r\n", who_am_i);
+   //pc.printf("Here is %x\r\n", who_am_i);
 
     // t is a thread to process tasks in an EventQueue
     // t call queue.dispatch_forever() to start the scheduler of the EventQueue
     thread.start(callback(&queue, &EventQueue::dispatch_forever));
     // 'Trig_led1' will execute in IRQ context
     sw2.rise(activate);
-
+    while(1);
 }
 
 
@@ -134,10 +150,24 @@ void logger(){
     
     t[2] = ((float)acc16) / 4096.0f;
 
-    printf("FXOS8700Q ACC: X=%1.4f(%x%x) Y=%1.4f(%x%x) Z=%1.4f(%x%x)\r\n",\
+    /*printf("FXOS8700Q ACC: X=%1.4f(%x%x) Y=%1.4f(%x%x) Z=%1.4f(%x%x)\r\n",\
         t[0], res[0], res[1],\
         t[1], res[2], res[3],\
         t[2], res[4], res[5]\
-      );
+    );
+    */
+   data_x.push_back(t[0]);
+   data_y.push_back(t[1]);
+   data_z.push_back(t[2]);
+   data_tilt.push_back(evaluate(t[0],t[1],t[2]));
+   
+   //pc.printf("%f\n%f\n%f\n",t[0],t[1],t[2]);
+}
 
+int evaluate(float x,float y, float z){
+    float total = flaot(sqrt(x*x + y*y + z*z));
+    if(z < 0.707 * total){
+        return 1;
+    }  
+    return 0;
 }
