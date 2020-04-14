@@ -32,7 +32,7 @@ InterruptIn sw2(SW2);
 
 EventQueue queue(32 * EVENTS_EVENT_SIZE);
 
-Thread t;
+Thread thread;
 
 Ticker log_ticker;
 Ticker led_ticker;
@@ -41,6 +41,9 @@ I2C i2c( PTD9,PTD8);
 Serial pc(USBTX, USBRX);
 
 int m_addr = FXOS8700CQ_SLAVE_ADDR1;
+uint8_t who_am_i, data[2], res[6];
+int16_t acc16;
+float t[3];
 
 void FXOS8700CQ_readRegs(int addr, uint8_t * data, int len);
 
@@ -73,25 +76,12 @@ int main() {
     led1 = 1;
     led2 = 1;
     led3 = 1;
-    // t is a thread to process tasks in an EventQueue
-
-    // t call queue.dispatch_forever() to start the scheduler of the EventQueue
-
-    t.start(callback(&queue, &EventQueue::dispatch_forever));
-
-    // 'Trig_led1' will execute in IRQ context
-
-    sw2.rise(activate);
+    
     // 'Trig_led2' will execute in context of thread 't'
     // 'Trig_led2' is directly put into the queue
     // sw3.rise(queue.event(Trig_led2));
 
     pc.baud(115200);
-
-
-   uint8_t who_am_i, data[2], res[6];
-   int16_t acc16;
-   float t[3];
 
    // Enable the FXOS8700Q
    FXOS8700CQ_readRegs( FXOS8700Q_CTRL_REG1, &data[1], 1);
@@ -103,6 +93,11 @@ int main() {
    FXOS8700CQ_readRegs(FXOS8700Q_WHOAMI, &who_am_i, 1);
    pc.printf("Here is %x\r\n", who_am_i);
 
+    // t is a thread to process tasks in an EventQueue
+    // t call queue.dispatch_forever() to start the scheduler of the EventQueue
+    thread.start(callback(&queue, &EventQueue::dispatch_forever));
+    // 'Trig_led1' will execute in IRQ context
+    sw2.rise(activate);
 
 }
 
@@ -121,43 +116,28 @@ void FXOS8700CQ_writeRegs(uint8_t * data, int len) {
 
 void logger(){
     FXOS8700CQ_readRegs(FXOS8700Q_OUT_X_MSB, res, 6);
+    acc16 = (res[0] << 6) | (res[1] >> 2);
+    if (acc16 > UINT14_MAX/2)
+        acc16 -= UINT14_MAX;
+    t[0] = ((float)acc16) / 4096.0f;
+    acc16 = (res[2] << 6) | (res[3] >> 2);
 
+    if (acc16 > UINT14_MAX/2)
+        acc16 -= UINT14_MAX;
 
-      acc16 = (res[0] << 6) | (res[1] >> 2);
+    t[1] = ((float)acc16) / 4096.0f;
 
-      if (acc16 > UINT14_MAX/2)
+    acc16 = (res[4] << 6) | (res[5] >> 2);
 
-         acc16 -= UINT14_MAX;
+    if (acc16 > UINT14_MAX/2)
+        acc16 -= UINT14_MAX;
+    
+    t[2] = ((float)acc16) / 4096.0f;
 
-      t[0] = ((float)acc16) / 4096.0f;
-
-
-      acc16 = (res[2] << 6) | (res[3] >> 2);
-
-      if (acc16 > UINT14_MAX/2)
-
-         acc16 -= UINT14_MAX;
-
-      t[1] = ((float)acc16) / 4096.0f;
-
-
-      acc16 = (res[4] << 6) | (res[5] >> 2);
-
-      if (acc16 > UINT14_MAX/2)
-
-         acc16 -= UINT14_MAX;
-
-      t[2] = ((float)acc16) / 4096.0f;
-
-
-      printf("FXOS8700Q ACC: X=%1.4f(%x%x) Y=%1.4f(%x%x) Z=%1.4f(%x%x)\r\n",\
-
-            t[0], res[0], res[1],\
-
-            t[1], res[2], res[3],\
-
-            t[2], res[4], res[5]\
-
+    printf("FXOS8700Q ACC: X=%1.4f(%x%x) Y=%1.4f(%x%x) Z=%1.4f(%x%x)\r\n",\
+        t[0], res[0], res[1],\
+        t[1], res[2], res[3],\
+        t[2], res[4], res[5]\
       );
 
 }
